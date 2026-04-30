@@ -1,0 +1,20 @@
+{
+  "name": "e-commerce-order-processing-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "services/*",
+    "frontend"
+  ],
+  "scripts": {
+    "build:shared": "npm run build --workspace=shared",
+    "dev": "docker compose up --build -d"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
+}

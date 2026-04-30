@@ -1,0 +1,20 @@
+{
+  "name": "@ecommerce/shared",
+  "version": "1.0.0",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "generate": "prisma generate --schema=prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.14.0",
+    "kafkajs": "^2.2.4",
+    "prom-client": "^15.1.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "prisma": "^5.14.0",
+    "typescript": "^5.4.5"
+  }
+}
