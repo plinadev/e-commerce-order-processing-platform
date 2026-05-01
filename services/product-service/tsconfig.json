@@ -6,7 +6,11 @@
     "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@ecommerce/shared": ["../../shared/src/index.ts"]
+    }
   },
   "include": ["src", "scripts"],
   "exclude": ["node_modules", "dist"]
