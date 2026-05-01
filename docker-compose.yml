@@ -15,6 +15,7 @@ services:
       - zookeeper
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -23,16 +24,21 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
 
   kafka-init:
     image: confluentinc/cp-kafka:7.5.0
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command: |
       "
-      echo 'Waiting for Kafka...'
-      cub kafka-ready -b kafka:9092 1 40
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic orders --partitions 3 --replication-factor 1
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic payments --partitions 3 --replication-factor 1
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic order.status.updated --partitions 3 --replication-factor 1
@@ -61,6 +67,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -68,6 +79,122 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-migrate:
+    build:
+      context: .
+      dockerfile: shared/Dockerfile.migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    ports:
+      - "3006:3006"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      REFRESH_TOKEN_EXPIRES_IN: ${REFRESH_TOKEN_EXPIRES_IN}
+      AUTH_PORT: ${AUTH_PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order-service/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      ORDER_PORT: ${ORDER_PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      PAYMENT_PORT: ${PAYMENT_PORT}
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  delivery-service:
+    build:
+      context: .
+      dockerfile: services/delivery-service/Dockerfile
+    ports:
+      - "3003:3003"
+    environment:
+      KAFKA_BROKER: ${KAFKA_BROKER}
+      DELIVERY_PORT: ${DELIVERY_PORT}
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  product-service:
+    build:
+      context: .
+      dockerfile: services/product-service/Dockerfile
+    ports:
+      - "3007:3007"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PRODUCT_PORT: ${PRODUCT_PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      GATEWAY_PORT: ${GATEWAY_PORT}
+      AUTH_PORT: ${AUTH_PORT}
+      ORDER_PORT: ${ORDER_PORT}
+      PAYMENT_PORT: ${PAYMENT_PORT}
+      DELIVERY_PORT: ${DELIVERY_PORT}
+      PRODUCT_PORT: ${PRODUCT_PORT}
+      SEARCH_PORT: ${SEARCH_PORT}
+      ANALYTICS_PORT: ${ANALYTICS_PORT}
+    depends_on:
+      - auth-service
+      - order-service
+      - product-service
 
 volumes:
   postgres_data:
